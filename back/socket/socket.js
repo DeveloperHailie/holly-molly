@@ -7,11 +7,21 @@ const sendNextTurn = require('./sendNextTurn');
 const waitHumanAnswer = require('./waitHumanAnswer');
 const { User, WaitingRoomMember } = require('../models');
 const {printErrorLog, printLog} = require('../util/log');
+const { createClient } = require("redis");
+const { createAdapter } = require("@socket.io/redis-adapter");
 var fs = require('fs');
+
+const pubClient = createClient({ url: "redis://localhost:6379" });
+pubClient.on('connect', () => console.log('Connected to pubClient!'));
+const subClient = pubClient.duplicate();
+subClient.on('connect', () => console.log('Connected to subClient!'));
+pubClient.connect();
+subClient.connect();
 
 module.exports = (server, app) => {
     const io = socketIo(server, socketConfig);
     app.set('io', io);
+    io.adapter(createAdapter(pubClient, subClient)); 
 
     io.on('connection', async (socket) => {
         saveSocketId(socket);
