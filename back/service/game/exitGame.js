@@ -1,6 +1,6 @@
-const { Room, Game, GameSet, GameMember, GameVote, WaitingRoomMember, User } = require('../../models');
+const { Chat, Room, Game, GameSet, GameMember, GameVote, WaitingRoomMember, User } = require('../../models');
 const {printErrorLog, printLog} = require('../../util/log');
-const {selectFinalResult, selectHuman, deleteAllAboutGame, updateRoomStatus, updateMemberReady} = require('./getFinalResult');
+const {selectFinalResult, selectHuman, deleteAllAboutGame, updateRoomStatus, updateMemberReady, deleteChatByRoomIdx} = require('./getFinalResult');
 
 const exitGame = async (req, res, next) => {
     try {
@@ -8,7 +8,7 @@ const exitGame = async (req, res, next) => {
         const io = req.app.get('io');
 
         const isSuccess = await exitGameAndRoom(user, io);
-        if(!isSuccess)  throw "exitGame fail";
+        if(!isSuccess)  throw "exitGame fail"; 
         await deleteUser(user.user_idx);
 
         res.status(204).end();
@@ -23,16 +23,17 @@ const exitGame = async (req, res, next) => {
 
 const exitGameAndRoom = async (user, io) => {
     try {
-        printErrorLog('exitGameAndRoom', user.user_idx+"번  퇴장 시작");
-
         const { game, gameMember } = await getGameAndMember(user.user_idx);
         const { room, roomMember } = await getRoomAndMember(user.user_idx);
         if(!gameMember && !roomMember)  return true;
 
+        await deleteChatByUserIdx(user.user_idx);
+
         const memberList = await getMemberList(room.get('room_idx')); //roomMember+gameMemberIdx
         const isLeader = roomMember.get('wrm_leader');
 
-        if (memberList.length <= 1) {
+        if (memberList.length <= 1) { // 방 폭파
+            await deleteChatByRoomIdx(room.get('room_idx'));
             if(game){
                 await deleteAllAboutGame(memberList, game.get('game_idx')); // game, gameMember, gameSet, gameVote 삭제
             }
@@ -49,7 +50,6 @@ const exitGameAndRoom = async (user, io) => {
             user_idx: user.user_idx,
             user_name: user.user_name,
         });
-        printLog('exitGameAndRoom', user.user_idx+"번 유저 퇴장 소켓 이벤트 전송");
 
         if (game) { // in game
             if (gameMember.get('game_member_role') == 'human' || memberList.length <= 3) { // human role or member count
@@ -59,9 +59,9 @@ const exitGameAndRoom = async (user, io) => {
                 result.human_color = human_info[0].wrm_user_color;
                 result.human_name = human_info[0].user_name;
                 io.to(room.get('room_idx')).emit('get final result', result);
-                printLog('exitGameAndRoom', room.get('room_idx')+"번 room 최종 결과 소켓 이벤트 전송");
 
-                // 게임 종료 처리 (game, gameMember, gameSet, gameVote 삭제)
+                // 게임 종료 처리 (chat / game, gameMember, gameSet, gameVote 삭제)
+                await deleteChatByRoomIdx(room.get('room_idx'));
                 await deleteAllAboutGame(memberList, game.get('game_idx'));
                 // game status
                 await updateRoomStatus(room.get('room_idx'), 'waiting');
@@ -70,6 +70,7 @@ const exitGameAndRoom = async (user, io) => {
                     room_idx: room.get('room_idx'),
                     room_status: 'waiting',
                 });
+                printLog('exitGameAndRoom', room.get('room_idx')+"번 room 게임 종료");
 
                 // ready 상태 변경
                 updateMemberReady(room.get('room_idx'));
@@ -82,7 +83,6 @@ const exitGameAndRoom = async (user, io) => {
         if (isLeader) {
             const hostIdx = await changeHost(memberList, user.user_idx);
             io.to(room.get('room_idx')).emit('change host', { user_idx: hostIdx });
-            printLog('exitGameAndRoom', room.get('room_idx')+"번 room 방장 변경 소켓 이벤트 전송");
         }
 
         if (roomMember) {
@@ -94,7 +94,6 @@ const exitGameAndRoom = async (user, io) => {
             room_member_count: memberList.length - 1,
         });
 
-        printLog('exitGameAndRoom', user.user_idx+"번 유저 퇴장 완료");
         return true;
     } catch (error) {
         printErrorLog('exitGame-exitGameAndRoom', error);
@@ -154,7 +153,6 @@ const deleteUser = async (userIdx) => {
             user_idx: userIdx,
         },
     });
-    printLog("deleteUser",userIdx+" 유저 삭제 완료");
 };
 const changeHost = async (memberList, userIdx) => {
     const hostIdx =
@@ -193,6 +191,14 @@ const deleteRoomMember = async (wrmIdx) => {
         },
     });
 };
+
+const deleteChatByUserIdx = async (userIdx) => {
+    await Chat.destroy({
+        where: {
+            user_user_idx: userIdx,
+        },
+    });
+}
 
 module.exports = {
     exitGame,

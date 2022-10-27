@@ -1,5 +1,5 @@
 const getInterimResult = require('./getInterimResult');
-const getFinalResult = require('./getFinalResult');
+const { getFinalResult } = require('./getFinalResult');
 const { startGame } = require('./startGame');
 const getGameMemberInfo = require('./getGameMemberInfo');
 const { exitGame } = require('./exitGame');
@@ -9,6 +9,8 @@ const { getVoteResult } = require('./getVoteResult');
 const saveSetImage = require('./saveSetImage');
 const writeHumanKeyword = require('./writeHumanKeyword');
 const {getTopVoteResult} = require('./getTopVoteResult');
+const getChat = require('./getChat');
+const {getKeywordLength} = require('./getKeywordLength');
 
 module.exports = {
     getInterimResult,
@@ -21,5 +23,7 @@ module.exports = {
     getVoteResult,
     getTopVoteResult,
     writeHumanKeyword,
-    saveSetImage
+    saveSetImage,
+    getChat,
+    getKeywordLength
 };

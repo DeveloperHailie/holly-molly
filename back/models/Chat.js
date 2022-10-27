@@ -1,33 +1,15 @@
 const Sequelize = require('sequelize');
 module.exports = function(sequelize, DataTypes) {
-  return sequelize.define('GameVote', {
-    game_vote_idx: {
+  return sequelize.define('Chat', {
+    chat_idx: {
       autoIncrement: true,
       type: DataTypes.INTEGER,
       allowNull: false,
       primaryKey: true
     },
-    game_vote_cnt: {
-      type: DataTypes.INTEGER,
+    chat_msg: {
+      type: DataTypes.STRING(1000),
       allowNull: false
-    },
-    game_set_game_set_idx: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      primaryKey: true,
-      references: {
-        model: 'GameSet',
-        key: 'game_set_idx'
-      }
-    },
-    game_member_game_member_idx: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      primaryKey: true,
-      references: {
-        model: 'GameMember',
-        key: 'game_member_idx'
-      }
     },
     created_at: {
       type: DataTypes.DATE,
@@ -36,10 +18,28 @@ module.exports = function(sequelize, DataTypes) {
     updated_at: {
       type: DataTypes.DATE,
       allowNull: true
+    },
+    user_user_idx: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      primaryKey: true,
+      references: {
+        model: 'User',
+        key: 'user_idx'
+      }
+    },
+    room_room_idx: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      primaryKey: true,
+      references: {
+        model: 'Room',
+        key: 'room_idx'
+      }
     }
   }, {
     sequelize,
-    tableName: 'GameVote',
+    tableName: 'Chat',
     timestamps: true,
     underscored: true,
     indexes: [
@@ -48,23 +48,23 @@ module.exports = function(sequelize, DataTypes) {
         unique: true,
         using: "BTREE",
         fields: [
-          { name: "game_vote_idx" },
-          { name: "game_set_game_set_idx" },
-          { name: "game_member_game_member_idx" },
+          { name: "chat_idx" },
+          { name: "user_user_idx" },
+          { name: "room_room_idx" },
         ]
       },
       {
-        name: "fk_game_vote_game_set1_idx",
+        name: "fk_Chat_User1_idx",
         using: "BTREE",
         fields: [
-          { name: "game_set_game_set_idx" },
+          { name: "user_user_idx" },
         ]
       },
       {
-        name: "fk_game_vote_game_member1_idx",
+        name: "fk_Chat_Room1_idx",
         using: "BTREE",
         fields: [
-          { name: "game_member_game_member_idx" },
+          { name: "room_room_idx" },
         ]
       },
     ]
