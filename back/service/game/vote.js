@@ -3,6 +3,9 @@ const db = require('../../models');
 const { getVoteList, calculateVoteResult, } = require('./getVoteResult');
 const {printErrorLog} = require('../../util/log');
 const { gameSchema } = require('../../util/joi/schema');
+const pm2 = require('pm2');
+
+const processId = 0;
 
 const vote = async (req, res, next) => {
     try {
@@ -19,25 +22,33 @@ const vote = async (req, res, next) => {
     
         const gameVoteList = await getVoteList(game_set_idx);
 
-        if (!gameVoteList || gameVoteList.length == 0) {
-            // first vote
+        if (!gameVoteList || gameVoteList.length == 0) { // first vote
             if (!timerResolveMap.get(game_set_idx)) {
-                timer(game_set_idx, 15, finishVote, [
-                    res.locals.gameIdx,
-                    game_set_idx,
-                    io,
-                ]);
+                // 특정 process에게 start vote하라고 메시지 전송
+                pm2.sendDataToProcessId(
+                    processId,
+                    {
+                        type: 'process:msg', 
+                        data: { 
+                            gameSetIdx: game_set_idx, 
+                            time: 15, 
+                            afterFunctionParameterList: [
+                                res.locals.gameIdx,
+                                game_set_idx,
+                                io,
+                            ]
+                        },
+                        topic: "start vote"
+                    },
+                    (err, result) => {
+                        if (err) {
+                            console.log('[error]', err);
+                        }
+                    }
+                );
             }
             await voteByCreating(game_set_idx, user_idx);
-        } else {
-            const timerResolve = timerResolveMap.get(game_set_idx);
-            if (!timerResolve) {
-                res.status(400).json({
-                    message: '투표가 이미 종료되었습니다.',
-                });
-                return;
-            }
-
+        } else { // not first vote
             let voteRecipientsIdx = undefined;
             for (const vote of gameVoteList) {
                 if (user_idx == vote['game_member_game_member_idx_GameMember.wrm_user_idx']) {
@@ -52,13 +63,44 @@ const vote = async (req, res, next) => {
                 await voteByUpdating(voteRecipientsIdx, game_set_idx);
             }
         }
-        numberOfRequeststMap.set(
-            game_set_idx,
-            numberOfRequeststMap.get(game_set_idx) + 1
+        
+        // 투표 수 update
+        // 특정 process에게 해당 투표의 투표자 수 업데이트하라고 메시지 전송
+        pm2.sendDataToProcessId(
+            processId,
+            {
+                type: 'process:msg', 
+                data: { 
+                    gameSetIdx: game_set_idx, 
+                },
+                topic: "update vote"
+            },
+            (err, result) => {
+                if (err) {
+                    console.log('[error]', err);
+                }
+            }
         );
         res.status(201).json({});
-
-        checkNumberOfVoters(res.locals.gameIdx, game_set_idx);
+        
+        // 투표 수 count
+        // 특정 process에게 투표 수 count 후 조건 만족 시 투표 종료하라고 메시지 전송
+        pm2.sendDataToProcessId(
+            processId,
+            {
+                type: 'process:msg', 
+                data: { 
+                    gameIdx : res.locals.gameIdx,
+                    gameSetIdx: game_set_idx, 
+                },
+                topic: "check to finish vote"
+            },
+            (err, result) => {
+                if (err) {
+                    console.log('[error]', err);
+                }
+            }
+        );
     } catch (error) {
         printErrorLog('vote', error);
         res.status(400).json({
@@ -155,5 +197,19 @@ const addGhostScore = async (gameSetIdx) => {
         }
     );
 };
+
+// processId가 0번인 프로세스만 해당 메시지 받음
+process.on('message', function (message) {
+    if (message.topic == 'start vote') {
+        timer(message.data.gameSetIdx, message.data.time, finishVote, message.data.afterFunctionParameterList);
+    }else if (message.topic == 'update vote'){
+        numberOfRequeststMap.set(
+            message.data.mapKey,
+            numberOfRequeststMap.get(message.data.gameSetIdx) + 1
+        );
+    }else if (message.topic == 'check to finish vote'){
+        checkNumberOfVoters(message.data.gameIdx, message.data.gameSetIdx);
+    }
+});
 
 module.exports = vote;
